@@ -22,6 +22,11 @@ Optional one-line installer:
 sh -c "$(curl -fsSL https://github.com/kyawyelin284/nura/releases/download/v1.0/install.sh)"
 ```
 
+Direct download links:
+
+- https://github.com/kyawyelin284/nura/releases/download/v1.0/nura-linux
+- https://github.com/kyawyelin284/nura/releases/download/v1.0/install.sh
+
 ## Hello World
 
 ```
