@@ -1,43 +1,112 @@
 # Nura
 
-Nura is a small, statically typed functional language with a reference interpreter and a bytecode VM backend.
+## Introduction
 
-## Language Features
+Nura is a small, statically typed functional language with closures, algebraic data types, pattern matching,
+tail-call optimization, garbage collection, a REPL, and a built-in standard library.
 
-- Integers and booleans
-- Arithmetic: `+`, `-`, `*`
-- Comparisons: `>`
-- Variables and `let` / `let rec`
-- Functions and application: `fun x -> expr`, `f(arg)`
-- Conditionals: `if cond then e1 else e2`
-- Lists: `[]`, `[e1, e2, ...]`, cons patterns
-- Algebraic data constructors: `Just(1)`, `Node(Leaf(1), Leaf(2))`
-- Pattern matching:
-  - `match expr with | [] -> e1 | x:xs -> e2`
-  - Constructor patterns: `Just(x)`, `Nothing`, `Node(l, r)`
-- Builtins: `print`, `println`, `head`, `tail`, `isEmpty`, `length`
+## Installation
 
-## Example Programs
-
-Factorial (tail recursion via `let rec`):
+Linux/macOS (download the prebuilt binary):
 
 ```
-let rec fact = fun n ->
-  if n > 1 then n * fact(n - 1) else 1
-in print(fact(5))
+curl -LO https://github.com/kyawyelin284/nura/releases/download/v1.0/nura-linux
+chmod +x nura-linux
+./nura-linux myprogram.nu
+./nura-linux   # REPL
 ```
 
-List match:
+Optional one-line installer:
 
 ```
-match [1,2,3] with | [] -> 0 | x:xs -> x
+sh -c "$(curl -fsSL https://github.com/kyawyelin284/nura/releases/download/v1.0/install.sh)"
 ```
 
-Constructor patterns:
+## Hello World
 
 ```
-match Just(5) with | Just(x) -> print(x) | Nothing -> print(0)
+print("Hello, Nura!")
 ```
+
+Note: Nura currently focuses on numeric and structural data. If string literals are not enabled in your build,
+replace the above with `print(1)` to verify output.
+
+## Variables and Expressions
+
+```
+let x = 10 in
+let y = x * 2 in
+print(y)
+```
+
+## Functions and Closures
+
+```
+let addMaker = fun x -> fun y -> x + y in
+let add5 = addMaker(5) in
+print(add5(3))
+```
+
+## Lists
+
+```
+let nums = [1,2,3,4] in
+print(head(nums))
+print(tail(nums))
+```
+
+## Algebraic Data Types & Pattern Matching
+
+```
+type Maybe a = Nothing | Just a
+
+let value = Just(5) in
+match value with
+| Just(x) -> print(x)
+| Nothing -> print(0)
+```
+
+## Recursive Functions (Tail-Call Optimized)
+
+```
+let rec sumList lst acc =
+  match lst with
+  | [] -> acc
+  | x:xs -> sumList(xs, acc + x)
+in
+print(sumList([1,2,3,4], 0))
+```
+
+## Modules
+
+```
+import "math.nu"
+let result = add(2,3)
+print(result)
+```
+
+Imports are merged into the current scope, so you can call imported functions directly.
+
+## REPL Usage
+
+```
+$ nura
+> let x = 10 in x * 2
+20
+> let f = fun y -> y + 5 in f(10)
+15
+```
+
+## Standard Library
+
+Built-ins:
+
+- `print`
+- `println`
+- `head`
+- `tail`
+- `isEmpty`
+- `length`
 
 ## Architecture
 
@@ -47,64 +116,9 @@ The pipeline is:
 Parser → Type Checker → Compiler → VM → GC
 ```
 
-- **Parser**: Megaparsec-based parser that builds an AST.
-- **Type Checker**: Hindley-Milner-style inference with unification and type variables.
-- **Compiler**: Lowers AST into stack-based bytecode with closures and pattern matching.
-- **VM**: Executes bytecode with an environment, call frames, and a heap.
-- **GC**: Mark-and-sweep over heap objects.
-
-## Running Programs
-
-Build:
-
-```
-stack build
-```
-
-### Install Without Haskell/Stack
-
-Linux/macOS (download the prebuilt binary):
-
-```
-curl -LO https://github.com/kyawyelin284/nura/releases/download/v1.0/nura-linux
-chmod +x nura-linux
-./nura-linux myprogram.nu
-./nura-linux   # starts REPL
-```
-
-Optional one-line install:
-
-```
-curl -LO https://github.com/kyawyelin284/nura/releases/download/v1.0/nura-linux && chmod +x nura-linux
-```
-
-Cross-platform one-line installer:
-
-```
-sh -c "$(curl -fsSL https://github.com/kyawyelin284/nura/releases/download/v1.0/install.sh)"
-```
-
-Run a file (interpreter backend):
-
-```
-stack exec nura-exe -- path/to/file.nu
-```
-
-Run with VM backend:
-
-```
-stack exec nura-exe -- --vm path/to/file.nu
-```
-
-REPL (no file provided):
-
-```
-stack exec nura-exe
-```
-
 ## Garbage Collection
 
-The VM uses a mark-and-sweep collector.
+The VM uses a mark-and-sweep collector:
 
 - **Roots**: VM stack values, current frame environment, call frame environments, and global environment.
 - **Mark**: Traverse reachable heap objects (closures, cons cells, constructor objects) and set their mark flag.
@@ -118,4 +132,7 @@ expression in both branches of an `if`), it emits `TailCall` instead of `Call`.
 
 The VM executes `TailCall` by reusing the current frame rather than pushing a new one. This prevents stack
 growth for tail-recursive functions.
-# nura
+
+## Features Recap
+
+Closures, ADTs, pattern matching, tail-call optimization, garbage collection, REPL, standard library.
