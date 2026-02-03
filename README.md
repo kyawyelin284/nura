@@ -61,6 +61,29 @@ Build:
 stack build
 ```
 
+### Install Without Haskell/Stack
+
+Linux/macOS (download the prebuilt binary):
+
+```
+curl -LO https://github.com/kyawyelin284/nura/releases/download/v1.0/nura-linux
+chmod +x nura-linux
+./nura-linux myprogram.nu
+./nura-linux   # starts REPL
+```
+
+Optional one-line install:
+
+```
+curl -LO https://github.com/kyawyelin284/nura/releases/download/v1.0/nura-linux && chmod +x nura-linux
+```
+
+Cross-platform one-line installer:
+
+```
+sh -c "$(curl -fsSL https://github.com/kyawyelin284/nura/releases/download/v1.0/install.sh)"
+```
+
 Run a file (interpreter backend):
 
 ```

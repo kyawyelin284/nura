@@ -16,6 +16,7 @@ main :: IO ()
 main = do
     args <- getArgs
     case args of
+        ["--version"] -> putStrLn "Nura v1.0"
         [] -> runRepl
         _ ->
             case parseArgs args of
