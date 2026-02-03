@@ -1,0 +1,2 @@
+Type error:
+type mismatch: expected TBool, got TInt
