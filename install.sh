@@ -27,4 +27,4 @@ fi
 
 echo "Installed to ${dest}"
 echo "Verifying..."
-nura --version
+"${dest}" --version
