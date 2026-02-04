@@ -24,6 +24,7 @@ data Expr
     | Match Expr Pattern Expr Pattern Expr
     | Let String Expr Expr
     | LetRec String Expr Expr
+    | Seq Expr Expr
     | Print Expr
     deriving (Show, Eq)
 

@@ -30,11 +30,14 @@ Direct download links:
 ## Hello World
 
 ```
-print("Hello, Nura!")
+print(1)
 ```
 
-Note: Nura currently focuses on numeric and structural data. If string literals are not enabled in your build,
-replace the above with `print(1)` to verify output.
+Output:
+
+```
+1
+```
 
 ## Variables and Expressions
 
@@ -42,6 +45,12 @@ replace the above with `print(1)` to verify output.
 let x = 10 in
 let y = x * 2 in
 print(y)
+```
+
+Output:
+
+```
+20
 ```
 
 ## Functions and Closures
@@ -52,12 +61,38 @@ let add5 = addMaker(5) in
 print(add5(3))
 ```
 
+Output:
+
+```
+8
+```
+
+Multi-argument calls are supported with commas and desugar to nested applications:
+
+```
+let add = fun x -> fun y -> x + y in
+print(add(2, 3))
+```
+
+Output:
+
+```
+5
+```
+
 ## Lists
 
 ```
 let nums = [1,2,3,4] in
 print(head(nums))
 print(tail(nums))
+```
+
+Output:
+
+```
+1
+[2, 3, 4]
 ```
 
 ## Algebraic Data Types & Pattern Matching
@@ -71,6 +106,12 @@ match value with
 | Nothing -> print(0)
 ```
 
+Output:
+
+```
+5
+```
+
 ## Recursive Functions (Tail-Call Optimized)
 
 ```
@@ -82,6 +123,12 @@ in
 print(sumList([1,2,3,4], 0))
 ```
 
+Output:
+
+```
+10
+```
+
 ## Modules
 
 ```
@@ -90,16 +137,25 @@ let result = add(2,3)
 print(result)
 ```
 
-Imports are merged into the current scope, so you can call imported functions directly.
+Output:
+
+```
+5
+```
+
+Imports are merged into the current scope, so you can call imported functions directly. Comma-separated
+calls like `add(2, 3)` are equivalent to `add(2)(3)`.
 
 ## REPL Usage
 
 ```
 $ nura
-> let x = 10 in x * 2
+nura> let x = 10 in x * 2
 20
-> let f = fun y -> y + 5 in f(10)
+nura> let f = fun y -> y + 5 in f(10)
 15
+nura> let add = fun a -> fun b -> a + b in add(2, 3)
+5
 ```
 
 ## Standard Library

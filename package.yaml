@@ -27,6 +27,7 @@ dependencies:
 - megaparsec
 - parser-combinators
 - process
+- time
 - text
 
 ghc-options:

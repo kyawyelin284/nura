@@ -109,6 +109,9 @@ eval env (Let name valueExpr bodyExpr) = do
 eval env (LetRec name valueExpr bodyExpr) = do
     value <- mfix (\v -> eval ((name, v) : env) valueExpr)
     eval ((name, value) : env) bodyExpr
+eval env (Seq firstExpr secondExpr) = do
+    _ <- eval env firstExpr
+    eval env secondExpr
 eval env (Print expr) = do
     value <- eval env expr
     putStrLn (renderValue value)
@@ -118,7 +121,7 @@ applyBuiltin :: Builtin -> Value -> IO Value
 applyBuiltin builtin value =
     case builtin of
         BuiltinPrint -> do
-            putStr (renderValue value)
+            putStrLn (renderValue value)
             pure Unit
         BuiltinPrintln -> do
             putStrLn (renderValue value)

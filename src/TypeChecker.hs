@@ -88,7 +88,12 @@ inferWith counter ctorEnv env expression =
         BoolLit _ -> Right ([], TBool, counter)
         Var name ->
             case lookup name env of
-                Just ty -> Right ([], ty, counter)
+                Just ty ->
+                    if name `elem` builtinNames
+                        then
+                            let (instType, nextCounter) = instantiate counter ty
+                            in Right ([], instType, nextCounter)
+                        else Right ([], ty, counter)
                 Nothing -> Left ("unbound variable: " <> name)
         Lambda name bodyExpr -> do
             let (paramType, nextCounter) = freshTypeVar counter
@@ -179,10 +184,14 @@ inferWith counter ctorEnv env expression =
             let env2 = applySubstEnv (composeSubst s2 s1) env
             (s3, bodyType, c3) <- inferWith c2 ctorEnv ((name, applySubst s2 valueType) : env2) bodyExpr
             Right (composeSubst s3 (composeSubst s2 s1), bodyType, c3)
+        Seq firstExpr secondExpr -> do
+            (s1, _, c1) <- inferWith counter ctorEnv env firstExpr
+            let env1 = applySubstEnv s1 env
+            (s2, secondType, c2) <- inferWith c1 ctorEnv env1 secondExpr
+            Right (composeSubst s2 s1, secondType, c2)
         Print expr -> do
-            (s1, exprType, c1) <- inferWith counter ctorEnv env expr
-            s2 <- unify exprType TInt
-            Right (composeSubst s2 s1, TUnit, c1)
+            (s1, _, c1) <- inferWith counter ctorEnv env expr
+            Right (s1, TUnit, c1)
 
 inferIntBinOp :: Int -> CtorEnv -> TypeEnv -> Expr -> Expr -> Either String (Subst, Type, Int)
 inferIntBinOp counter ctorEnv env left right = do
@@ -215,6 +224,43 @@ inferList counter ctorEnv env elements =
 
 freshTypeVar :: Int -> (Type, Int)
 freshTypeVar counter = (TVar ("t" <> show counter), counter + 1)
+
+instantiate :: Int -> Type -> (Type, Int)
+instantiate counter ty =
+    let (ty', _, nextCounter) = go counter [] ty
+    in (ty', nextCounter)
+  where
+    go c subst current =
+        case current of
+            TInt -> (TInt, subst, c)
+            TBool -> (TBool, subst, c)
+            TUnit -> (TUnit, subst, c)
+            TList element ->
+                let (element', subst', c') = go c subst element
+                in (TList element', subst', c')
+            TFunc arg result ->
+                let (arg', subst', c1) = go c subst arg
+                    (result', subst'', c2) = go c1 subst' result
+                in (TFunc arg' result', subst'', c2)
+            TCon name args ->
+                let (args', subst', c') = goList c subst args
+                in (TCon name args', subst', c')
+            TVar name ->
+                case lookup name subst of
+                    Just existing -> (existing, subst, c)
+                    Nothing ->
+                        let (freshVar, c') = freshTypeVar c
+                        in (freshVar, (name, freshVar) : subst, c')
+
+    goList c subst args =
+        foldl step ([], subst, c) args
+      where
+        step (acc, substAcc, cAcc) arg =
+            let (arg', subst', c') = go cAcc substAcc arg
+            in (acc ++ [arg'], subst', c')
+
+builtinNames :: [String]
+builtinNames = ["print", "println", "head", "tail", "isEmpty", "length"]
 
 applySubstEnv :: Subst -> TypeEnv -> TypeEnv
 applySubstEnv subst = map (\(name, ty) -> (name, applySubst subst ty))

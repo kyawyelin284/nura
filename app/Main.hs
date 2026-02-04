@@ -1,6 +1,6 @@
 module Main (main) where
 
-import AST (Expr(..), Type(..))
+import AST (Expr(..), Type(..), Decl(..), Constructor(..))
 import Bytecode (compile)
 import Interpreter (builtinEnv, eval)
 import Parser (parseProgram)
@@ -9,6 +9,9 @@ import System.Environment (getArgs)
 import System.FilePath (isAbsolute, takeDirectory, (</>))
 import System.IO (hFlush, isEOF, stdout)
 import qualified Data.Set as Set
+import Data.Time.Clock.POSIX (getPOSIXTime)
+import System.IO (appendFile)
+import Data.List (intercalate)
 import TypeChecker (CtorEnv, TypeEnv, infer)
 import VM (runVM)
 
@@ -46,27 +49,38 @@ partitionArgs = foldr step (False, [])
 
 runInterpreter :: FilePath -> IO ()
 runInterpreter path = do
+    logDebug "Main.runInterpreter" "Start" [("path", path)]
     result <- loadWithImports path
     case result of
-        Left err -> putStrLn err
-        Right expr ->
-            case infer builtinsCtorEnv builtinsTypeEnv expr of
-                Left err -> putStrLn ("Type error:\n" <> err)
+        Left err -> do
+            logDebug "Main.runInterpreter" "Load error" [("error", err)]
+            putStrLn err
+        Right (expr, ctorEnv) ->
+            case infer ctorEnv builtinsTypeEnv expr of
+                Left err -> do
+                    logDebug "Main.runInterpreter" "Type error" [("error", err)]
+                    putStrLn ("Type error:\n" <> err)
                 Right _ -> do
                     _ <- eval builtinEnv expr
                     pure ()
 
 runVMMode :: FilePath -> IO ()
 runVMMode path = do
+    logDebug "Main.runVMMode" "Start" [("path", path)]
     result <- loadWithImports path
     case result of
-        Left err -> putStrLn err
-        Right expr ->
-            case infer builtinsCtorEnv builtinsTypeEnv expr of
-                Left err -> putStrLn ("Type error:\n" <> err)
+        Left err -> do
+            logDebug "Main.runVMMode" "Load error" [("error", err)]
+            putStrLn err
+        Right (expr, ctorEnv) ->
+            case infer ctorEnv builtinsTypeEnv expr of
+                Left err -> do
+                    logDebug "Main.runVMMode" "Type error" [("error", err)]
+                    putStrLn ("Type error:\n" <> err)
                 Right _ ->
                     case compile expr of
-                        Left feature ->
+                        Left feature -> do
+                            logDebug "Main.runVMMode" "Compile unsupported" [("feature", feature)]
                             putStrLn ("VM backend does not support " <> feature <> " yet.")
                         Right bytecode ->
                             runVM bytecode
@@ -87,15 +101,24 @@ builtinsCtorEnv =
     , ("Cons", (["a"], [TVar "a", TList (TVar "a")], TList (TVar "a")))
     ]
 
+declsToCtorEnv :: [Decl] -> CtorEnv
+declsToCtorEnv decls =
+    concatMap declToCtors decls
+  where
+    declToCtors (TypeDecl typeName params ctors) =
+        let resultType = TCon typeName (map TVar params)
+        in map (\(Constructor ctorName ctorArgs) -> (ctorName, (params, ctorArgs, resultType))) ctors
+
 data ReplState = ReplState
     { replDefs :: [(Bool, String, Expr)]
+    , replDecls :: [Decl]
     , replVisited :: Set.Set FilePath
     }
 
 runRepl :: IO ()
 runRepl = do
     baseDir <- getCurrentDirectory
-    replLoop baseDir (ReplState [] Set.empty)
+    replLoop baseDir (ReplState [] [] Set.empty)
 
 replLoop :: FilePath -> ReplState -> IO ()
 replLoop baseDir state = do
@@ -122,16 +145,18 @@ runReplLine :: FilePath -> ReplState -> String -> IO (Either String ReplState)
 runReplLine baseDir state input =
     case parseProgram input of
         Left err -> pure (Left ("Parse error:\n" <> err))
-        Right (imports, expr) -> do
+        Right (imports, localDecls, expr) -> do
             importsResult <- loadImports baseDir imports (replVisited state)
             case importsResult of
                 Left err -> pure (Left err)
-                Right (importDefs, visited') -> do
+                Right (importDefs, importDecls, visited') -> do
                     let (localDefs, bodyExpr) = collectDefs expr
                     let allDefs = replDefs state ++ importDefs ++ localDefs
+                    let allDecls = replDecls state ++ importDecls ++ localDecls
                     let wrappedExpr = wrapDefs allDefs bodyExpr
                     let printedExpr = Apply (Var "println") wrappedExpr
-                    case infer builtinsCtorEnv builtinsTypeEnv printedExpr of
+                    let ctorEnv = builtinsCtorEnv ++ declsToCtorEnv allDecls
+                    case infer ctorEnv builtinsTypeEnv printedExpr of
                         Left err -> pure (Left ("Type error:\n" <> err))
                         Right _ ->
                             case compile printedExpr of
@@ -139,51 +164,58 @@ runReplLine baseDir state input =
                                     pure (Left ("VM backend does not support " <> feature <> " yet."))
                                 Right bytecode -> do
                                     runVM bytecode
-                                    pure (Right (ReplState allDefs visited'))
+                                    pure (Right (ReplState allDefs allDecls visited'))
 
-loadWithImports :: FilePath -> IO (Either String Expr)
+loadWithImports :: FilePath -> IO (Either String (Expr, CtorEnv))
 loadWithImports path = do
     absPath <- makeAbsolute path
+    logDebug "Main.loadWithImports" "Read file" [("path", absPath)]
     contents <- readFile absPath
     case parseProgram contents of
-        Left err -> pure (Left ("Parse error in " <> absPath <> ":\n" <> err))
-        Right (imports, expr) -> do
+        Left err -> do
+            logDebug "Main.loadWithImports" "Parse error" [("path", absPath), ("error", err)]
+            pure (Left ("Parse error in " <> absPath <> ":\n" <> err))
+        Right (imports, localDecls, expr) -> do
+            logDebug "Main.loadWithImports" "Parsed program" [("imports", show (length imports))]
             let baseDir = takeDirectory absPath
             result <- loadImports baseDir imports (Set.singleton absPath)
             case result of
                 Left err -> pure (Left err)
-                Right (defs, _) ->
-                    pure (Right (wrapDefs defs expr))
+                Right (defs, importDecls, _) -> do
+                    let allDecls = localDecls ++ importDecls
+                    let ctorEnv = builtinsCtorEnv ++ declsToCtorEnv allDecls
+                    pure (Right (wrapDefs defs expr, ctorEnv))
 
-loadImports :: FilePath -> [FilePath] -> Set.Set FilePath -> IO (Either String ([(Bool, String, Expr)], Set.Set FilePath))
+loadImports :: FilePath -> [FilePath] -> Set.Set FilePath -> IO (Either String ([(Bool, String, Expr)], [Decl], Set.Set FilePath))
 loadImports baseDir paths visited =
-    foldl loadStep (pure (Right ([], visited))) paths
+    foldl loadStep (pure (Right ([], [], visited))) paths
   where
     loadStep ioAcc importPath = do
         acc <- ioAcc
         case acc of
             Left err -> pure (Left err)
-            Right (defs, seen) -> do
+            Right (defs, decls, seen) -> do
                 let resolved =
                         if isAbsolute importPath
                             then importPath
                             else baseDir </> importPath
                 absPath <- makeAbsolute resolved
+                logDebug "Main.loadImports" "Import" [("path", absPath)]
                 if Set.member absPath seen
-                    then pure (Right (defs, seen))
+                    then pure (Right (defs, decls, seen))
                     else do
                         contents <- readFile absPath
                         case parseProgram contents of
                             Left err ->
                                 pure (Left ("Parse error in " <> absPath <> ":\n" <> err))
-                            Right (imports, expr) -> do
+                            Right (imports, localDecls, expr) -> do
                                 let baseDir' = takeDirectory absPath
                                 nested <- loadImports baseDir' imports (Set.insert absPath seen)
                                 case nested of
                                     Left err -> pure (Left err)
-                                    Right (nestedDefs, seen') ->
+                                    Right (nestedDefs, nestedDecls, seen') ->
                                         let (localDefs, _) = collectDefs expr
-                                        in pure (Right (defs ++ nestedDefs ++ localDefs, seen'))
+                                        in pure (Right (defs ++ nestedDefs ++ localDefs, decls ++ nestedDecls ++ localDecls, seen'))
 
 collectDefs :: Expr -> ([(Bool, String, Expr)], Expr)
 collectDefs expr =
@@ -204,3 +236,25 @@ wrapDefs defs expr =
         if isRec
             then LetRec name valueExpr acc
             else Let name valueExpr acc
+
+logDebug :: String -> String -> [(String, String)] -> IO ()
+logDebug location message fields = do
+    timestamp <- fmap (floor . (* 1000)) getPOSIXTime
+    let dataFields = intercalate "," (map (\(k, v) -> "\"" <> k <> "\":\"" <> escape v <> "\"") fields)
+    let payload =
+            "{\"sessionId\":\"debug-session\""
+            <> ",\"runId\":\"run1\""
+            <> ",\"hypothesisId\":\"H1\""
+            <> ",\"location\":\"" <> escape location <> "\""
+            <> ",\"message\":\"" <> escape message <> "\""
+            <> ",\"data\":{" <> dataFields <> "}"
+            <> ",\"timestamp\":" <> show (timestamp :: Integer)
+            <> "}\n"
+    appendFile "/home/kyawyelin/Documents/nucleus/.cursor/debug.log" payload
+
+escape :: String -> String
+escape = concatMap escapeChar
+  where
+    escapeChar '"' = "\\\""
+    escapeChar '\\' = "\\\\"
+    escapeChar c = [c]

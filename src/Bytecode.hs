@@ -79,6 +79,7 @@ compileWith base inTail expression =
                     (bodyCode, bodyLen) <- compileWith (base + valueLen + 1) inTail bodyExpr
                     Right (valueCode ++ [Store name] ++ bodyCode, valueLen + 1 + bodyLen)
             in compiled
+        AST.Seq _ _ -> Left "sequence expressions"
         AST.If condExpr thenExpr elseExpr ->
             let compiled = do
                     (condCode, condLen) <- compileWith base False condExpr
@@ -135,6 +136,8 @@ freeVars expr bound =
         AST.Lambda name bodyExpr -> freeVars bodyExpr (name : bound)
         AST.Apply funcExpr argExpr ->
             freeVars funcExpr bound `uniqueAppend` freeVars argExpr bound
+        AST.Seq firstExpr secondExpr ->
+            freeVars firstExpr bound `uniqueAppend` freeVars secondExpr bound
         _ -> []
 
 renameFreeVars :: [(String, String)] -> AST.Expr -> [String] -> AST.Expr
@@ -177,6 +180,10 @@ renameFreeVars mapping expr bound =
             AST.Apply
                 (renameFreeVars mapping funcExpr bound)
                 (renameFreeVars mapping argExpr bound)
+        AST.Seq firstExpr secondExpr ->
+            AST.Seq
+                (renameFreeVars mapping firstExpr bound)
+                (renameFreeVars mapping secondExpr bound)
         AST.Match scrutinee pattern1 branch1 pattern2 branch2 ->
             AST.Match
                 (renameFreeVars mapping scrutinee bound)

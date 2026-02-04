@@ -321,7 +321,7 @@ runVM instrs = do
     applyBuiltin builtin value heap ip =
         case builtin of
             BuiltinPrint -> do
-                putStr (renderValue value heap)
+                putStrLn (renderValue value heap)
                 pure (IntVal 0)
             BuiltinPrintln -> do
                 putStrLn (renderValue value heap)
