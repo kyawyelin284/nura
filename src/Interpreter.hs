@@ -16,11 +16,13 @@ data Builtin
     | BuiltinTail
     | BuiltinIsEmpty
     | BuiltinLength
+    | BuiltinStrLen
     deriving (Show, Eq)
 
 data Value
     = IntVal Integer
     | BoolVal Bool
+    | StringVal String
     | Closure String Expr Env
     | ListVal [Value]
     | ConstructorVal String [Value]
@@ -38,11 +40,13 @@ builtinEnv =
     , ("tail", Builtin BuiltinTail)
     , ("isEmpty", Builtin BuiltinIsEmpty)
     , ("length", Builtin BuiltinLength)
+    , ("strlen", Builtin BuiltinStrLen)
     ]
 
 eval :: Env -> Expr -> IO Value
 eval _ (IntLit n) = pure (IntVal n)
 eval _ (BoolLit b) = pure (BoolVal b)
+eval _ (StringLit s) = pure (StringVal s)
 eval env (Var name) =
     case lookup name env of
         Just value -> pure value
@@ -74,9 +78,12 @@ eval env (ConstructorExpr name args) = do
     values <- mapM (eval env) args
     pure (ConstructorVal name values)
 eval env (Add left right) = do
-    IntVal l <- eval env left
-    IntVal r <- eval env right
-    pure (IntVal (l + r))
+    leftVal <- eval env left
+    rightVal <- eval env right
+    case (leftVal, rightVal) of
+        (IntVal l, IntVal r) -> pure (IntVal (l + r))
+        (StringVal l, StringVal r) -> pure (StringVal (l <> r))
+        _ -> fail "attempted to add non-numeric or non-string values"
 eval env (Sub left right) = do
     IntVal l <- eval env left
     IntVal r <- eval env right
@@ -86,9 +93,45 @@ eval env (Mul left right) = do
     IntVal r <- eval env right
     pure (IntVal (l * r))
 eval env (GreaterThan left right) = do
-    IntVal l <- eval env left
-    IntVal r <- eval env right
-    pure (BoolVal (l > r))
+    leftVal <- eval env left
+    rightVal <- eval env right
+    case compareOrderValues leftVal rightVal of
+        Just GT -> pure (BoolVal True)
+        Just _ -> pure (BoolVal False)
+        Nothing -> fail "attempted to compare non-matching values"
+eval env (LessThan left right) = do
+    leftVal <- eval env left
+    rightVal <- eval env right
+    case compareOrderValues leftVal rightVal of
+        Just LT -> pure (BoolVal True)
+        Just _ -> pure (BoolVal False)
+        Nothing -> fail "attempted to compare non-matching values"
+eval env (LessThanOrEqual left right) = do
+    leftVal <- eval env left
+    rightVal <- eval env right
+    case compareOrderValues leftVal rightVal of
+        Just GT -> pure (BoolVal False)
+        Just _ -> pure (BoolVal True)
+        Nothing -> fail "attempted to compare non-matching values"
+eval env (GreaterThanOrEqual left right) = do
+    leftVal <- eval env left
+    rightVal <- eval env right
+    case compareOrderValues leftVal rightVal of
+        Just LT -> pure (BoolVal False)
+        Just _ -> pure (BoolVal True)
+        Nothing -> fail "attempted to compare non-matching values"
+eval env (Equal left right) = do
+    leftVal <- eval env left
+    rightVal <- eval env right
+    case compareValues leftVal rightVal of
+        Just result -> pure (BoolVal result)
+        Nothing -> fail "attempted to compare non-matching values"
+eval env (NotEqual left right) = do
+    leftVal <- eval env left
+    rightVal <- eval env right
+    case compareValues leftVal rightVal of
+        Just result -> pure (BoolVal (not result))
+        Nothing -> fail "attempted to compare non-matching values"
 eval env (If condExpr thenExpr elseExpr) = do
     BoolVal cond <- eval env condExpr
     if cond
@@ -151,6 +194,10 @@ applyBuiltin builtin value =
                 ConstructorVal "Nil" [] -> pure (IntVal 0)
                 ConstructorVal "Cons" _ -> pure (IntVal (lengthConstructorList 0 value))
                 _ -> fail "length: expected list"
+        BuiltinStrLen ->
+            case value of
+                StringVal s -> pure (IntVal (fromIntegral (length s)))
+                _ -> fail "strlen: expected string"
 
 lengthConstructorList :: Integer -> Value -> Integer
 lengthConstructorList acc value =
@@ -164,6 +211,7 @@ renderValue value =
     case value of
         IntVal n -> show n
         BoolVal b -> if b then "true" else "false"
+        StringVal s -> s
         ListVal values -> "[" <> renderList values <> "]"
         ConstructorVal "Nil" [] -> "[]"
         ConstructorVal "Cons" _ -> "[" <> renderConstructorList value <> "]"
@@ -204,3 +252,63 @@ matchPattern pattern value =
             | name == ctorName && length vars == length fields ->
                 Just (zip vars fields)
         _ -> Nothing
+
+compareValues :: Value -> Value -> Maybe Bool
+compareValues leftVal rightVal =
+    case (leftVal, rightVal) of
+        (IntVal l, IntVal r) -> Just (l == r)
+        (BoolVal l, BoolVal r) -> Just (l == r)
+        (StringVal l, StringVal r) -> Just (l == r)
+        _ -> do
+            leftList <- toList leftVal
+            rightList <- toList rightVal
+            listEquals leftList rightList
+
+toList :: Value -> Maybe [Value]
+toList value =
+    case value of
+        ListVal values -> Just values
+        ConstructorVal "Nil" [] -> Just []
+        ConstructorVal "Cons" [headValue, tailValue] -> do
+            rest <- toList tailValue
+            Just (headValue : rest)
+        _ -> Nothing
+
+listEquals :: [Value] -> [Value] -> Maybe Bool
+listEquals left right =
+    case (left, right) of
+        ([], []) -> Just True
+        (l : ls, r : rs) -> do
+            elemEqual <- compareValues l r
+            restEqual <- listEquals ls rs
+            Just (elemEqual && restEqual)
+        _ -> Just False
+
+compareOrderValues :: Value -> Value -> Maybe Ordering
+compareOrderValues leftVal rightVal =
+    case (leftVal, rightVal) of
+        (IntVal l, IntVal r) -> Just (compare l r)
+        (StringVal l, StringVal r) -> Just (compare l r)
+        _ ->
+            case (toList leftVal, toList rightVal) of
+                (Just leftList, Just rightList) ->
+                    listCompare leftList rightList
+                _ ->
+                    case (leftVal, rightVal) of
+                        (ConstructorVal leftTag leftFields, ConstructorVal rightTag rightFields) ->
+                            case compare leftTag rightTag of
+                                EQ -> listCompare leftFields rightFields
+                                other -> Just other
+                        _ -> Nothing
+
+listCompare :: [Value] -> [Value] -> Maybe Ordering
+listCompare left right =
+    case (left, right) of
+        ([], []) -> Just EQ
+        ([], _) -> Just LT
+        (_, []) -> Just GT
+        (l : ls, r : rs) -> do
+            elemOrder <- compareOrderValues l r
+            case elemOrder of
+                EQ -> listCompare ls rs
+                _ -> Just elemOrder

@@ -9,6 +9,7 @@ module AST
 data Expr
     = IntLit Integer
     | BoolLit Bool
+    | StringLit String
     | Var String
     | Lambda String Expr
     | Apply Expr Expr
@@ -20,6 +21,11 @@ data Expr
     | Sub Expr Expr
     | Mul Expr Expr
     | GreaterThan Expr Expr
+    | Equal Expr Expr
+    | NotEqual Expr Expr
+    | LessThan Expr Expr
+    | LessThanOrEqual Expr Expr
+    | GreaterThanOrEqual Expr Expr
     | If Expr Expr Expr
     | Match Expr Pattern Expr Pattern Expr
     | Let String Expr Expr
@@ -37,6 +43,7 @@ data Pattern
 data Type
     = TInt
     | TBool
+    | TString
     | TVar String
     | TFunc Type Type
     | TList Type

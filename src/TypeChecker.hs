@@ -19,6 +19,7 @@ applySubst subst ty =
     case ty of
         TInt -> TInt
         TBool -> TBool
+        TString -> TString
         TUnit -> TUnit
         TVar name ->
             case lookup name subst of
@@ -42,6 +43,7 @@ unify left right =
     case (left, right) of
         (TInt, TInt) -> Right []
         (TBool, TBool) -> Right []
+        (TString, TString) -> Right []
         (TUnit, TUnit) -> Right []
         (TVar name, ty) -> bindVar name ty
         (ty, TVar name) -> bindVar name ty
@@ -66,6 +68,7 @@ occursIn name ty =
     case ty of
         TInt -> False
         TBool -> False
+        TString -> False
         TUnit -> False
         TVar other -> name == other
         TFunc arg result -> occursIn name arg || occursIn name result
@@ -86,6 +89,7 @@ inferWith counter ctorEnv env expression =
     case expression of
         IntLit _ -> Right ([], TInt, counter)
         BoolLit _ -> Right ([], TBool, counter)
+        StringLit _ -> Right ([], TString, counter)
         Var name ->
             case lookup name env of
                 Just ty ->
@@ -130,17 +134,34 @@ inferWith counter ctorEnv env expression =
             Right (subst, applySubst s3 (TList headType), c2)
         ConstructorExpr name args ->
             inferConstructor counter ctorEnv env name args
-        Add left right -> inferIntBinOp counter ctorEnv env left right
+        Add left right -> inferAdd counter ctorEnv env left right
         Sub left right -> inferIntBinOp counter ctorEnv env left right
         Mul left right -> inferIntBinOp counter ctorEnv env left right
         GreaterThan left right -> do
             (s1, leftType, c1) <- inferWith counter ctorEnv env left
             let env1 = applySubstEnv s1 env
             (s2, rightType, c2) <- inferWith c1 ctorEnv env1 right
-            s3 <- unify (applySubst s2 leftType) TInt
-            s4 <- unify (applySubst s3 rightType) TInt
-            let subst = composeSubst s4 (composeSubst s3 (composeSubst s2 s1))
-            Right (subst, TBool, c2)
+            let leftType' = applySubst s2 leftType
+            let rightType' = applySubst s2 rightType
+            case (unify leftType' TInt, unify rightType' TInt) of
+                (Right s3, Right s4) ->
+                    let subst = composeSubst s4 (composeSubst s3 (composeSubst s2 s1))
+                    in Right (subst, TBool, c2)
+                _ ->
+                    case (unify leftType' TString, unify rightType' TString) of
+                        (Right s3, Right s4) ->
+                            let subst = composeSubst s4 (composeSubst s3 (composeSubst s2 s1))
+                            in Right (subst, TBool, c2)
+                        _ ->
+                            Left ("type mismatch: expected TInt or TString for '>', got " <> show leftType' <> " and " <> show rightType')
+        LessThan left right ->
+            inferOrderOp "<" counter ctorEnv env left right
+        LessThanOrEqual left right ->
+            inferOrderOp "<=" counter ctorEnv env left right
+        GreaterThanOrEqual left right ->
+            inferOrderOp ">=" counter ctorEnv env left right
+        Equal left right -> inferEqual counter ctorEnv env left right
+        NotEqual left right -> inferNotEqual counter ctorEnv env left right
         If condExpr thenExpr elseExpr -> do
             (s1, condType, c1) <- inferWith counter ctorEnv env condExpr
             s2 <- unify condType TBool
@@ -203,6 +224,135 @@ inferIntBinOp counter ctorEnv env left right = do
     let subst = composeSubst s4 (composeSubst s3 (composeSubst s2 s1))
     Right (subst, TInt, c2)
 
+inferAdd :: Int -> CtorEnv -> TypeEnv -> Expr -> Expr -> Either String (Subst, Type, Int)
+inferAdd counter ctorEnv env left right = do
+    (s1, leftType, c1) <- inferWith counter ctorEnv env left
+    let env1 = applySubstEnv s1 env
+    (s2, rightType, c2) <- inferWith c1 ctorEnv env1 right
+    let leftType' = applySubst s2 leftType
+    let rightType' = applySubst s2 rightType
+    case (unify leftType' TInt, unify rightType' TInt) of
+        (Right s3, Right s4) ->
+            let subst = composeSubst s4 (composeSubst s3 (composeSubst s2 s1))
+            in Right (subst, TInt, c2)
+        _ ->
+            case (unify leftType' TString, unify rightType' TString) of
+                (Right s3, Right s4) ->
+                    let subst = composeSubst s4 (composeSubst s3 (composeSubst s2 s1))
+                    in Right (subst, TString, c2)
+                _ ->
+                    Left ("type mismatch: expected TInt or TString for '+', got " <> show leftType' <> " and " <> show rightType')
+
+inferEqual :: Int -> CtorEnv -> TypeEnv -> Expr -> Expr -> Either String (Subst, Type, Int)
+inferEqual counter ctorEnv env left right = do
+    (s1, leftType, c1) <- inferWith counter ctorEnv env left
+    let env1 = applySubstEnv s1 env
+    (s2, rightType, c2) <- inferWith c1 ctorEnv env1 right
+    let leftType' = applySubst s2 leftType
+    let rightType' = applySubst s2 rightType
+    case (unify leftType' TInt, unify rightType' TInt) of
+        (Right s3, Right s4) ->
+            let subst = composeSubst s4 (composeSubst s3 (composeSubst s2 s1))
+            in Right (subst, TBool, c2)
+        _ ->
+            case (unify leftType' TBool, unify rightType' TBool) of
+                (Right s3, Right s4) ->
+                    let subst = composeSubst s4 (composeSubst s3 (composeSubst s2 s1))
+                    in Right (subst, TBool, c2)
+                _ ->
+                    case (unify leftType' TString, unify rightType' TString) of
+                        (Right s3, Right s4) ->
+                            let subst = composeSubst s4 (composeSubst s3 (composeSubst s2 s1))
+                            in Right (subst, TBool, c2)
+                        _ ->
+                            case (leftType', rightType') of
+                                (TList leftElem, TList rightElem) -> do
+                                    s3 <- unify leftElem rightElem
+                                    let elemType = applySubst s3 leftElem
+                                    if isComparableType elemType
+                                        then
+                                            let subst = composeSubst s3 (composeSubst s2 s1)
+                                            in Right (subst, TBool, c2)
+                                        else
+                                            Left ("type mismatch: expected list of comparable types for '==', got " <> show elemType)
+                                _ ->
+                                    Left ("type mismatch: expected comparable types for '==', got " <> show leftType' <> " and " <> show rightType')
+
+inferNotEqual :: Int -> CtorEnv -> TypeEnv -> Expr -> Expr -> Either String (Subst, Type, Int)
+inferNotEqual counter ctorEnv env left right = do
+    (s1, leftType, c1) <- inferWith counter ctorEnv env left
+    let env1 = applySubstEnv s1 env
+    (s2, rightType, c2) <- inferWith c1 ctorEnv env1 right
+    let leftType' = applySubst s2 leftType
+    let rightType' = applySubst s2 rightType
+    case (unify leftType' TInt, unify rightType' TInt) of
+        (Right s3, Right s4) ->
+            let subst = composeSubst s4 (composeSubst s3 (composeSubst s2 s1))
+            in Right (subst, TBool, c2)
+        _ ->
+            case (unify leftType' TBool, unify rightType' TBool) of
+                (Right s3, Right s4) ->
+                    let subst = composeSubst s4 (composeSubst s3 (composeSubst s2 s1))
+                    in Right (subst, TBool, c2)
+                _ ->
+                    case (unify leftType' TString, unify rightType' TString) of
+                        (Right s3, Right s4) ->
+                            let subst = composeSubst s4 (composeSubst s3 (composeSubst s2 s1))
+                            in Right (subst, TBool, c2)
+                        _ ->
+                            case (leftType', rightType') of
+                                (TList leftElem, TList rightElem) -> do
+                                    s3 <- unify leftElem rightElem
+                                    let elemType = applySubst s3 leftElem
+                                    if isComparableType elemType
+                                        then
+                                            let subst = composeSubst s3 (composeSubst s2 s1)
+                                            in Right (subst, TBool, c2)
+                                        else
+                                            Left ("type mismatch: expected list of comparable types for '!=', got " <> show elemType)
+                                _ ->
+                                    Left ("type mismatch: expected comparable types for '!=', got " <> show leftType' <> " and " <> show rightType')
+
+inferOrderOp :: String -> Int -> CtorEnv -> TypeEnv -> Expr -> Expr -> Either String (Subst, Type, Int)
+inferOrderOp op counter ctorEnv env left right = do
+    (s1, leftType, c1) <- inferWith counter ctorEnv env left
+    let env1 = applySubstEnv s1 env
+    (s2, rightType, c2) <- inferWith c1 ctorEnv env1 right
+    let leftType' = applySubst s2 leftType
+    let rightType' = applySubst s2 rightType
+    case (unify leftType' TInt, unify rightType' TInt) of
+        (Right s3, Right s4) ->
+            let subst = composeSubst s4 (composeSubst s3 (composeSubst s2 s1))
+            in Right (subst, TBool, c2)
+        _ ->
+            case (unify leftType' TString, unify rightType' TString) of
+                (Right s3, Right s4) ->
+                    let subst = composeSubst s4 (composeSubst s3 (composeSubst s2 s1))
+                    in Right (subst, TBool, c2)
+                _ ->
+                    case (leftType', rightType') of
+                        (TList leftElem, TList rightElem) -> do
+                            s3 <- unify leftElem rightElem
+                            let elemType = applySubst s3 leftElem
+                            if isOrderableType elemType
+                                then
+                                    let subst = composeSubst s3 (composeSubst s2 s1)
+                                    in Right (subst, TBool, c2)
+                                else
+                                    Left ("type mismatch: expected list of orderable types for '" <> op <> "', got " <> show elemType)
+                        (TCon leftName leftArgs, TCon rightName rightArgs)
+                            | leftName == rightName && length leftArgs == length rightArgs -> do
+                                s3 <- unifyTypeLists leftArgs rightArgs
+                                let unifiedArgs = map (applySubst s3) leftArgs
+                                if all isOrderableType unifiedArgs
+                                    then
+                                        let subst = composeSubst s3 (composeSubst s2 s1)
+                                        in Right (subst, TBool, c2)
+                                    else
+                                        Left ("type mismatch: expected orderable constructor arguments for '" <> op <> "', got " <> show unifiedArgs)
+                        _ ->
+                            Left ("type mismatch: expected TInt, TString, list of orderable types, or matching ADTs for '" <> op <> "', got " <> show leftType' <> " and " <> show rightType')
+
 inferList :: Int -> CtorEnv -> TypeEnv -> [Expr] -> Either String (Subst, Type, Int)
 inferList counter ctorEnv env elements =
     case elements of
@@ -234,6 +384,7 @@ instantiate counter ty =
         case current of
             TInt -> (TInt, subst, c)
             TBool -> (TBool, subst, c)
+            TString -> (TString, subst, c)
             TUnit -> (TUnit, subst, c)
             TList element ->
                 let (element', subst', c') = go c subst element
@@ -260,7 +411,7 @@ instantiate counter ty =
             in (acc ++ [arg'], subst', c')
 
 builtinNames :: [String]
-builtinNames = ["print", "println", "head", "tail", "isEmpty", "length"]
+builtinNames = ["print", "println", "head", "tail", "isEmpty", "length", "strlen"]
 
 applySubstEnv :: Subst -> TypeEnv -> TypeEnv
 applySubstEnv subst = map (\(name, ty) -> (name, applySubst subst ty))
@@ -354,3 +505,21 @@ orElse result message =
     case result of
         Left _ -> Left message
         Right value -> Right value
+
+isComparableType :: Type -> Bool
+isComparableType ty =
+    case ty of
+        TInt -> True
+        TBool -> True
+        TString -> True
+        TList element -> isComparableType element
+        _ -> False
+
+isOrderableType :: Type -> Bool
+isOrderableType ty =
+    case ty of
+        TInt -> True
+        TString -> True
+        TList element -> isOrderableType element
+        TCon _ args -> all isOrderableType args
+        _ -> False

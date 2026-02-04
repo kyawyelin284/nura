@@ -30,13 +30,13 @@ Direct download links:
 ## Hello World
 
 ```
-print(1)
+print("Hello, Nura!")
 ```
 
 Output:
 
 ```
-1
+Hello, Nura!
 ```
 
 ## Variables and Expressions
@@ -78,6 +78,29 @@ Output:
 
 ```
 5
+```
+
+## Strings and Comparisons
+
+```
+print("Hello, " + "Nura!")
+print(strlen("Nura"))
+print("b" > "a")
+print("a" <= "a")
+print([1,2,3] < [1,2,4])
+type Maybe a = Nothing | Just a
+print(Just(1) < Just(2))
+```
+
+Output:
+
+```
+Hello, Nura!
+4
+true
+true
+true
+true
 ```
 
 ## Lists
@@ -168,6 +191,7 @@ Built-ins:
 - `tail`
 - `isEmpty`
 - `length`
+- `strlen`
 
 ## Architecture
 

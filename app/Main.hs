@@ -9,9 +9,6 @@ import System.Environment (getArgs)
 import System.FilePath (isAbsolute, takeDirectory, (</>))
 import System.IO (hFlush, isEOF, stdout)
 import qualified Data.Set as Set
-import Data.Time.Clock.POSIX (getPOSIXTime)
-import System.IO (appendFile)
-import Data.List (intercalate)
 import TypeChecker (CtorEnv, TypeEnv, infer)
 import VM (runVM)
 
@@ -93,6 +90,7 @@ builtinsTypeEnv =
     , ("tail", TFunc (TList (TVar "a_tail")) (TList (TVar "a_tail")))
     , ("isEmpty", TFunc (TList (TVar "a_isEmpty")) TBool)
     , ("length", TFunc (TList (TVar "a_length")) TInt)
+    , ("strlen", TFunc TString TInt)
     ]
 
 builtinsCtorEnv :: CtorEnv
@@ -238,23 +236,4 @@ wrapDefs defs expr =
             else Let name valueExpr acc
 
 logDebug :: String -> String -> [(String, String)] -> IO ()
-logDebug location message fields = do
-    timestamp <- fmap (floor . (* 1000)) getPOSIXTime
-    let dataFields = intercalate "," (map (\(k, v) -> "\"" <> k <> "\":\"" <> escape v <> "\"") fields)
-    let payload =
-            "{\"sessionId\":\"debug-session\""
-            <> ",\"runId\":\"run1\""
-            <> ",\"hypothesisId\":\"H1\""
-            <> ",\"location\":\"" <> escape location <> "\""
-            <> ",\"message\":\"" <> escape message <> "\""
-            <> ",\"data\":{" <> dataFields <> "}"
-            <> ",\"timestamp\":" <> show (timestamp :: Integer)
-            <> "}\n"
-    appendFile "/home/kyawyelin/Documents/nucleus/.cursor/debug.log" payload
-
-escape :: String -> String
-escape = concatMap escapeChar
-  where
-    escapeChar '"' = "\\\""
-    escapeChar '\\' = "\\\\"
-    escapeChar c = [c]
+logDebug _ _ _ = pure ()

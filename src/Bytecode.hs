@@ -7,7 +7,14 @@ import qualified AST
 
 data Instr
     = PushInt Integer
+    | PushString String
     | Add
+    | Eq
+    | Neq
+    | Gt
+    | Lt
+    | Lte
+    | Gte
     | Mul
     | Load String
     | Store String
@@ -39,9 +46,22 @@ compileWith base inTail expression =
         AST.IntLit n -> Right ([PushInt n], 1)
         AST.BoolLit True -> Right ([PushInt 1], 1)
         AST.BoolLit False -> Right ([PushInt 0], 1)
+        AST.StringLit s -> Right ([PushString s], 1)
         AST.Var name -> Right ([Load name], 1)
         AST.Add left right ->
             compileBin base left right Add
+        AST.Equal left right ->
+            compileBin base left right Eq
+        AST.NotEqual left right ->
+            compileBin base left right Neq
+        AST.GreaterThan left right ->
+            compileBin base left right Gt
+        AST.LessThan left right ->
+            compileBin base left right Lt
+        AST.LessThanOrEqual left right ->
+            compileBin base left right Lte
+        AST.GreaterThanOrEqual left right ->
+            compileBin base left right Gte
         AST.Mul left right ->
             compileBin base left right Mul
         AST.Lambda param bodyExpr -> do
@@ -98,7 +118,6 @@ compileWith base inTail expression =
                     Right (code, condLen + 1 + thenLen + 1 + elseLen)
             in compiled
         AST.Sub _ _ -> Left "subtraction"
-        AST.GreaterThan _ _ -> Left "comparison"
         AST.Match scrutinee pattern1 branch1 pattern2 branch2 ->
             compileMatch base scrutinee pattern1 branch1 pattern2 branch2
         AST.LetRec _ _ _ -> Left "recursive let"
@@ -120,11 +139,17 @@ freeVars expr bound =
     case expr of
         AST.IntLit _ -> []
         AST.BoolLit _ -> []
+        AST.StringLit _ -> []
         AST.Var name -> if name `elem` bound then [] else [name]
         AST.Add left right -> freeVars left bound `uniqueAppend` freeVars right bound
         AST.Mul left right -> freeVars left bound `uniqueAppend` freeVars right bound
         AST.Sub left right -> freeVars left bound `uniqueAppend` freeVars right bound
         AST.GreaterThan left right -> freeVars left bound `uniqueAppend` freeVars right bound
+        AST.Equal left right -> freeVars left bound `uniqueAppend` freeVars right bound
+        AST.NotEqual left right -> freeVars left bound `uniqueAppend` freeVars right bound
+        AST.LessThan left right -> freeVars left bound `uniqueAppend` freeVars right bound
+        AST.LessThanOrEqual left right -> freeVars left bound `uniqueAppend` freeVars right bound
+        AST.GreaterThanOrEqual left right -> freeVars left bound `uniqueAppend` freeVars right bound
         AST.If condExpr thenExpr elseExpr ->
             freeVars condExpr bound `uniqueAppend`
             freeVars thenExpr bound `uniqueAppend`
@@ -145,6 +170,7 @@ renameFreeVars mapping expr bound =
     case expr of
         AST.IntLit _ -> expr
         AST.BoolLit _ -> expr
+        AST.StringLit _ -> expr
         AST.Var name ->
             if name `elem` bound
                 then expr
@@ -159,6 +185,16 @@ renameFreeVars mapping expr bound =
             AST.Sub (renameFreeVars mapping left bound) (renameFreeVars mapping right bound)
         AST.GreaterThan left right ->
             AST.GreaterThan (renameFreeVars mapping left bound) (renameFreeVars mapping right bound)
+        AST.Equal left right ->
+            AST.Equal (renameFreeVars mapping left bound) (renameFreeVars mapping right bound)
+        AST.NotEqual left right ->
+            AST.NotEqual (renameFreeVars mapping left bound) (renameFreeVars mapping right bound)
+        AST.LessThan left right ->
+            AST.LessThan (renameFreeVars mapping left bound) (renameFreeVars mapping right bound)
+        AST.LessThanOrEqual left right ->
+            AST.LessThanOrEqual (renameFreeVars mapping left bound) (renameFreeVars mapping right bound)
+        AST.GreaterThanOrEqual left right ->
+            AST.GreaterThanOrEqual (renameFreeVars mapping left bound) (renameFreeVars mapping right bound)
         AST.If condExpr thenExpr elseExpr ->
             AST.If
                 (renameFreeVars mapping condExpr bound)

@@ -6,7 +6,6 @@ module Parser
 import AST (Expr(..), Pattern(..), Type(..), Decl(..), Constructor(..))
 import Control.Applicative (many, optional, some)
 import Control.Monad (void)
-import Data.Char (isDigit, isLetter)
 import Data.List (isSuffixOf)
 import Data.Void (Void)
 import Text.Megaparsec (Parsec, between, eof, errorBundlePretty, manyTill, notFollowedBy, parse, sepBy, try, (<|>))
@@ -79,6 +78,9 @@ booleanLiteral :: Parser Expr
 booleanLiteral =
     (BoolLit True <$ keyword "true")
     <|> (BoolLit False <$ keyword "false")
+
+stringLiteralExpr :: Parser Expr
+stringLiteralExpr = StringLit <$> stringLiteral
 
 variable :: Parser Expr
 variable = Var <$> identifier
@@ -175,6 +177,7 @@ atom =
     <|> constructorExpr
     <|> listLiteral
     <|> parens exprParser
+    <|> stringLiteralExpr
     <|> booleanLiteral
     <|> integer
     <|> variable
@@ -192,7 +195,14 @@ operatorTable =
     , [ InfixL (Add <$ symbol "+")
       , InfixL (Sub <$ symbol "-")
       ]
-    , [ InfixN (GreaterThan <$ symbol ">") ]
+    , [ InfixN (GreaterThanOrEqual <$ symbol ">=")
+      , InfixN (GreaterThan <$ symbol ">")
+      , InfixN (LessThanOrEqual <$ symbol "<=")
+      , InfixN (LessThan <$ symbol "<")
+      ]
+    , [ InfixN (NotEqual <$ symbol "!=")
+      , InfixN (Equal <$ symbol "==")
+      ]
     ]
 
 exprParser :: Parser Expr

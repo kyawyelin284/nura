@@ -6,6 +6,7 @@ import Bytecode (Instr(..))
 
 data Value
     = IntVal Integer
+    | StringVal String
     | Addr Int
     | BuiltinVal Builtin
     deriving (Show, Eq)
@@ -26,6 +27,7 @@ data Builtin
     | BuiltinTail
     | BuiltinIsEmpty
     | BuiltinLength
+    | BuiltinStrLen
     deriving (Show, Eq)
 
 data Frame = Frame
@@ -49,6 +51,7 @@ runVM instrs = do
         , ("tail", BuiltinVal BuiltinTail)
         , ("isEmpty", BuiltinVal BuiltinIsEmpty)
         , ("length", BuiltinVal BuiltinLength)
+        , ("strlen", BuiltinVal BuiltinStrLen)
         ]
 
     maybeCollect :: Stack -> Frame -> [Frame] -> Env -> [HeapObj] -> [HeapObj]
@@ -64,11 +67,101 @@ runVM instrs = do
             case instrs !! ip of
                 PushInt n ->
                     exec (ip + 1) (IntVal n : stack) currentFrame callStack heap
+                PushString s ->
+                    exec (ip + 1) (StringVal s : stack) currentFrame callStack heap
                 Add ->
                     case stack of
                         IntVal a : IntVal b : rest ->
                             exec (ip + 1) (IntVal (b + a) : rest) currentFrame callStack heap
-                        _ -> fail (vmError ip "Add: stack underflow or non-int values")
+                        StringVal a : StringVal b : rest ->
+                            exec (ip + 1) (StringVal (b <> a) : rest) currentFrame callStack heap
+                        _ -> fail (vmError ip "Add: stack underflow or invalid value types")
+                Eq ->
+                    case stack of
+                        IntVal a : IntVal b : rest ->
+                            exec (ip + 1) (IntVal (if b == a then 1 else 0) : rest) currentFrame callStack heap
+                        StringVal a : StringVal b : rest ->
+                            exec (ip + 1) (IntVal (if b == a then 1 else 0) : rest) currentFrame callStack heap
+                        Addr a : Addr b : rest ->
+                            case eqValues (Addr a) (Addr b) heap of
+                                Just result ->
+                                    exec (ip + 1) (IntVal (if result then 1 else 0) : rest) currentFrame callStack heap
+                                Nothing ->
+                                    fail (vmError ip "Eq: invalid list comparison")
+                        _ -> fail (vmError ip "Eq: stack underflow or invalid value types")
+                Neq ->
+                    case stack of
+                        IntVal a : IntVal b : rest ->
+                            exec (ip + 1) (IntVal (if b /= a then 1 else 0) : rest) currentFrame callStack heap
+                        StringVal a : StringVal b : rest ->
+                            exec (ip + 1) (IntVal (if b /= a then 1 else 0) : rest) currentFrame callStack heap
+                        Addr a : Addr b : rest ->
+                            case eqValues (Addr a) (Addr b) heap of
+                                Just result ->
+                                    exec (ip + 1) (IntVal (if not result then 1 else 0) : rest) currentFrame callStack heap
+                                Nothing ->
+                                    fail (vmError ip "Neq: invalid list comparison")
+                        _ -> fail (vmError ip "Neq: stack underflow or invalid value types")
+                Gt ->
+                    case stack of
+                        IntVal a : IntVal b : rest ->
+                            exec (ip + 1) (IntVal (if b > a then 1 else 0) : rest) currentFrame callStack heap
+                        StringVal a : StringVal b : rest ->
+                            exec (ip + 1) (IntVal (if b > a then 1 else 0) : rest) currentFrame callStack heap
+                        Addr a : Addr b : rest ->
+                            case orderValues (Addr b) (Addr a) heap of
+                                Just GT ->
+                                    exec (ip + 1) (IntVal 1 : rest) currentFrame callStack heap
+                                Just _ ->
+                                    exec (ip + 1) (IntVal 0 : rest) currentFrame callStack heap
+                                Nothing ->
+                                    fail (vmError ip "Gt: invalid list comparison")
+                        _ -> fail (vmError ip "Gt: stack underflow or invalid value types")
+                Lt ->
+                    case stack of
+                        IntVal a : IntVal b : rest ->
+                            exec (ip + 1) (IntVal (if b < a then 1 else 0) : rest) currentFrame callStack heap
+                        StringVal a : StringVal b : rest ->
+                            exec (ip + 1) (IntVal (if b < a then 1 else 0) : rest) currentFrame callStack heap
+                        Addr a : Addr b : rest ->
+                            case orderValues (Addr b) (Addr a) heap of
+                                Just LT ->
+                                    exec (ip + 1) (IntVal 1 : rest) currentFrame callStack heap
+                                Just _ ->
+                                    exec (ip + 1) (IntVal 0 : rest) currentFrame callStack heap
+                                Nothing ->
+                                    fail (vmError ip "Lt: invalid list comparison")
+                        _ -> fail (vmError ip "Lt: stack underflow or invalid value types")
+                Lte ->
+                    case stack of
+                        IntVal a : IntVal b : rest ->
+                            exec (ip + 1) (IntVal (if b <= a then 1 else 0) : rest) currentFrame callStack heap
+                        StringVal a : StringVal b : rest ->
+                            exec (ip + 1) (IntVal (if b <= a then 1 else 0) : rest) currentFrame callStack heap
+                        Addr a : Addr b : rest ->
+                            case orderValues (Addr b) (Addr a) heap of
+                                Just GT ->
+                                    exec (ip + 1) (IntVal 0 : rest) currentFrame callStack heap
+                                Just _ ->
+                                    exec (ip + 1) (IntVal 1 : rest) currentFrame callStack heap
+                                Nothing ->
+                                    fail (vmError ip "Lte: invalid list comparison")
+                        _ -> fail (vmError ip "Lte: stack underflow or invalid value types")
+                Gte ->
+                    case stack of
+                        IntVal a : IntVal b : rest ->
+                            exec (ip + 1) (IntVal (if b >= a then 1 else 0) : rest) currentFrame callStack heap
+                        StringVal a : StringVal b : rest ->
+                            exec (ip + 1) (IntVal (if b >= a then 1 else 0) : rest) currentFrame callStack heap
+                        Addr a : Addr b : rest ->
+                            case orderValues (Addr b) (Addr a) heap of
+                                Just LT ->
+                                    exec (ip + 1) (IntVal 0 : rest) currentFrame callStack heap
+                                Just _ ->
+                                    exec (ip + 1) (IntVal 1 : rest) currentFrame callStack heap
+                                Nothing ->
+                                    fail (vmError ip "Gte: invalid list comparison")
+                        _ -> fail (vmError ip "Gte: stack underflow or invalid value types")
                 Mul ->
                     case stack of
                         IntVal a : IntVal b : rest ->
@@ -293,6 +386,7 @@ runVM instrs = do
     markValue value heap =
         case value of
             IntVal _ -> heap
+            StringVal _ -> heap
             Addr addr -> markHeapObject addr heap
             BuiltinVal _ -> heap
 
@@ -360,6 +454,10 @@ runVM instrs = do
                 case value of
                     Addr addr -> IntVal <$> listLength addr heap ip
                     _ -> fail (vmError ip "length: expected list address")
+            BuiltinStrLen ->
+                case value of
+                    StringVal s -> pure (IntVal (fromIntegral (length s)))
+                    _ -> fail (vmError ip "strlen: expected string")
 
     listLength :: Int -> [HeapObj] -> Int -> IO Integer
     listLength addr heap ip =
@@ -375,10 +473,84 @@ runVM instrs = do
             Just (ClosureObj _ _ _ _) -> fail (vmError ip "length: expected list, got closure")
             Nothing -> fail (vmError ip "length: invalid heap address")
 
+    eqValues :: Value -> Value -> [HeapObj] -> Maybe Bool
+    eqValues leftVal rightVal heap =
+        case (leftVal, rightVal) of
+            (IntVal l, IntVal r) -> Just (l == r)
+            (StringVal l, StringVal r) -> Just (l == r)
+            (Addr leftAddr, Addr rightAddr) -> eqListAddrs leftAddr rightAddr heap
+            _ -> Nothing
+
+    eqListAddrs :: Int -> Int -> [HeapObj] -> Maybe Bool
+    eqListAddrs leftAddr rightAddr heap
+        | leftAddr == rightAddr = Just True
+        | otherwise =
+            case (heapLookup leftAddr heap, heapLookup rightAddr heap) of
+                (Just (CtorObj _ "Nil" []), Just (CtorObj _ "Nil" [])) -> Just True
+                (Just (ListNode _ leftHead leftTail), Just (ListNode _ rightHead rightTail)) -> do
+                    headsEqual <- eqValues leftHead rightHead heap
+                    tailsEqual <- eqValues leftTail rightTail heap
+                    Just (headsEqual && tailsEqual)
+                (Just (CtorObj _ "Nil" []), Just (ListNode _ _ _)) -> Just False
+                (Just (ListNode _ _ _), Just (CtorObj _ "Nil" [])) -> Just False
+                _ -> Nothing
+
+    orderValues :: Value -> Value -> [HeapObj] -> Maybe Ordering
+    orderValues leftVal rightVal heap =
+        case (leftVal, rightVal) of
+            (IntVal l, IntVal r) -> Just (compare l r)
+            (StringVal l, StringVal r) -> Just (compare l r)
+            (Addr leftAddr, Addr rightAddr) ->
+                case (heapLookup leftAddr heap, heapLookup rightAddr heap) of
+                    (Just (ListNode _ _ _), _) -> compareListAddrs leftAddr rightAddr heap
+                    (Just (CtorObj _ "Nil" []), _) -> compareListAddrs leftAddr rightAddr heap
+                    (Just (CtorObj _ _ _), Just (CtorObj _ _ _)) -> compareCtorAddrs leftAddr rightAddr heap
+                    _ -> Nothing
+            _ -> Nothing
+
+    compareListAddrs :: Int -> Int -> [HeapObj] -> Maybe Ordering
+    compareListAddrs leftAddr rightAddr heap
+        | leftAddr == rightAddr = Just EQ
+        | otherwise =
+            case (heapLookup leftAddr heap, heapLookup rightAddr heap) of
+                (Just (CtorObj _ "Nil" []), Just (CtorObj _ "Nil" [])) -> Just EQ
+                (Just (CtorObj _ "Nil" []), Just (ListNode _ _ _)) -> Just LT
+                (Just (ListNode _ _ _), Just (CtorObj _ "Nil" [])) -> Just GT
+                (Just (ListNode _ leftHead leftTail), Just (ListNode _ rightHead rightTail)) -> do
+                    headOrder <- orderValues leftHead rightHead heap
+                    case headOrder of
+                        EQ -> orderValues leftTail rightTail heap
+                        _ -> Just headOrder
+                _ -> Nothing
+
+    compareCtorAddrs :: Int -> Int -> [HeapObj] -> Maybe Ordering
+    compareCtorAddrs leftAddr rightAddr heap
+        | leftAddr == rightAddr = Just EQ
+        | otherwise =
+            case (heapLookup leftAddr heap, heapLookup rightAddr heap) of
+                (Just (CtorObj _ leftTag leftFields), Just (CtorObj _ rightTag rightFields)) ->
+                    case compare leftTag rightTag of
+                        EQ -> compareValueLists leftFields rightFields heap
+                        other -> Just other
+                _ -> Nothing
+
+    compareValueLists :: [Value] -> [Value] -> [HeapObj] -> Maybe Ordering
+    compareValueLists left right heap =
+        case (left, right) of
+            ([], []) -> Just EQ
+            ([], _) -> Just LT
+            (_, []) -> Just GT
+            (l : ls, r : rs) -> do
+                headOrder <- orderValues l r heap
+                case headOrder of
+                    EQ -> compareValueLists ls rs heap
+                    _ -> Just headOrder
+
     renderValue :: Value -> [HeapObj] -> String
     renderValue value heap =
         case value of
             IntVal n -> show n
+            StringVal s -> s
             Addr addr ->
                 case heapLookup addr heap of
                     Just (CtorObj _ "Nil" []) -> "[]"
