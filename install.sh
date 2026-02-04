@@ -2,7 +2,7 @@
 set -eu
 
 REPO="kyawyelin284/nura"
-VERSION="v1.0"
+VERSION="v1.0.1"
 TARGET_DIR="${HOME}/bin"
 
 os="$(uname -s | tr '[:upper:]' '[:lower:]')"
@@ -14,7 +14,8 @@ case "$os" in
 esac
 
 mkdir -p "$TARGET_DIR"
-url="https://github.com/${REPO}/releases/download/${VERSION}/${asset}"
+cache_bust="$(date +%s)"
+url="https://github.com/${REPO}/releases/download/${VERSION}/${asset}?cachebust=${cache_bust}"
 dest="${TARGET_DIR}/nura"
 
 echo "Downloading ${url}..."
