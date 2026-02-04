@@ -10,7 +10,7 @@ tail-call optimization, garbage collection, a REPL, and a built-in standard libr
 Linux/macOS (download the prebuilt binary):
 
 ```
-curl -LO https://github.com/kyawyelin284/nura/releases/download/v1.0/nura-linux
+curl -LO https://github.com/kyawyelin284/nura/releases/download/v1.0.1/nura-linux
 chmod +x nura-linux
 ./nura-linux myprogram.nu
 ./nura-linux   # REPL
@@ -19,13 +19,13 @@ chmod +x nura-linux
 Optional one-line installer:
 
 ```
-sh -c "$(curl -fsSL https://github.com/kyawyelin284/nura/releases/download/v1.0/install.sh)"
+sh -c "$(curl -fsSL https://github.com/kyawyelin284/nura/releases/download/v1.0.1/install.sh)"
 ```
 
 Direct download links:
 
-- https://github.com/kyawyelin284/nura/releases/download/v1.0/nura-linux
-- https://github.com/kyawyelin284/nura/releases/download/v1.0/install.sh
+- https://github.com/kyawyelin284/nura/releases/download/v1.0.1/nura-linux
+- https://github.com/kyawyelin284/nura/releases/download/v1.0.1/install.sh
 
 ## Hello World
 
