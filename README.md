@@ -1,5 +1,7 @@
 # Nura
 
+Documentation: `docs/README.md`
+
 ## Introduction
 
 Nura is a small, statically typed functional language with closures, algebraic data types, pattern matching,
